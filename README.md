@@ -60,7 +60,7 @@ The full write-up is the [Phase 1 report](reports/Phase1_Report.pdf); [`reports/
 
 ### Scalar versus SIMD
 
-Each kernel processes N = 256 sixteen-bit elements. Every cycle count below was measured on the RTL and matches the golden model's prediction exactly.
+Each kernel processes N = 256 random sixteen-bit elements (full range). Every cycle count below was measured on the RTL and matches the golden model's prediction exactly; the counts do not depend on the data.
 
 | Kernel | What it computes | 1 lane | 2 lanes | 4 lanes | 8 lanes | Speed-up |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -77,17 +77,19 @@ Each kernel processes N = 256 sixteen-bit elements. Every cycle count below was 
 
 ### FPGA: Lattice ECP5-25F after place-and-route
 
+The FPGA build is loaded with `isa_test`, the program that uses every instruction, so the synthesis tools cannot remove any part of the processor.
+
 | Lanes | Logic cells | Multipliers | Block RAM | Fmax (median of 3 seeds) |
 | --- | --- | --- | --- | --- |
-| 1 | 949 (3.9%) | 1 | 2 | 50.8 MHz |
-| 2 | 1,636 (6.7%) | 2 | 2 | 41.4 MHz |
-| 4 | 2,865 (11.8%) | 4 | 3 | 37.1 MHz |
-| 8 | 4,650 (19.1%) | 8 | 5 | 33.6 MHz |
+| 1 | 1,555 (6.4%) | 1 | 2 | 43.3 MHz |
+| 2 | 1,943 (8.0%) | 2 | 3 | 36.2 MHz |
+| 4 | 3,720 (15.3%) | 4 | 5 | 32.9 MHz |
+| 8 | 5,396 (22.2%) | 8 | 9 | 29.1 MHz |
 
-- **Cost.** Each lane adds one hardware multiplier and about 530 logic cells on average. Eight lanes cost 4.9× the logic of one, because control, scalar registers and memories are shared.
-- **Clock.** The single-cycle datapath gets longer with more lanes, so Fmax drops from 50.8 to 33.6 MHz.
-- **Real speed-up.** 7.89 × (33.6 / 50.8) = **5.2×** faster in wall-clock time at 8 lanes. Pipelining (Phase 2) targets the lost clock speed.
-- **Artix-7 (Basys-3) estimate.** 3,704 LUTs (18%) and 9 DSP48 for 8 lanes. Details and the Vivado flow: [`syn/`](syn).
+- **Cost.** Each lane adds one hardware multiplier and about 550 logic cells on average. Eight lanes cost 3.5× the logic of one, because control, scalar registers and memories are shared.
+- **Clock.** The single-cycle datapath gets longer with more lanes, so the estimated Fmax drops from 43.3 to 29.1 MHz.
+- **Real speed-up.** 7.89 × (29.1 / 43.3) = **5.3×** faster in wall-clock time at 8 lanes. Pipelining (Phase 2) targets the lost clock speed.
+- **Artix-7 (Basys-3) estimate.** 2,731 LUTs (13%) and 8 DSP48 for 8 lanes, one per lane. Details and the Vivado flow: [`syn/`](syn).
 
 <p align="center"><img src="results/figures/fpga_scaling.png" width="620" alt="Logic cells and maximum clock frequency against lane count"></p>
 
@@ -98,10 +100,11 @@ Each kernel processes N = 256 sixteen-bit elements. Every cycle count below was 
 | Lane ALU | 14 operations × corner values, every shift amount, carry isolation, 2,000 random vectors per op | 225,496 lane checks, 0 errors |
 | Register files | both ports, write enable, read-during-write, `s0 = 0`, debug port, random | 10,044 checks, 0 errors |
 | Lane MUX + combiner | broadcast, adder tree vs plain loop, extremes; 1, 2, 4 and 8 lanes | 44,032 checks, 0 errors |
-| Full system | 6 programs × 4 lane counts: every memory word, register, instruction and cycle count | 24 / 24 runs match |
-| Directed corner tests | writes to `s0`, address and PC wrap-around, back-to-back loads, a branch into a load, wide broadcast, every unused op code; 4 lane counts | 8 / 8 runs match |
-| Board version | `fpga_top` with its block RAM, started by its power-on reset alone; 4 lane counts | correct dot product on the LEDs |
-| Mutation tests | injected bugs in the ALU, adder tree, sign extension and load timing | all caught |
+| Full system | 6 programs × 4 lane counts: every memory word, scalar and vector register, instruction and cycle count, plus 50 cycles after `HALT` | 24 / 24 runs match |
+| Directed corner tests | writes to `s0`, address and PC wrap-around, back-to-back loads, a branch into a load, wide broadcast, every unused op code, `BNE` on bits 16 and 31, unused fields, code after `HALT`; 4 lane counts | 12 / 12 runs match |
+| Board version | `fpga_top` with its block RAM, loaded with `isa_test`, started by its power-on reset alone; 4 lane counts | registers, LEDs and all 1,024 memory words match |
+| Random programs | `sw/fuzz.py`: every op code, random branches, addresses and data, RTL against the golden model; 25 per lane count in `make test`, 1,000 in `make fuzz` | 4,000 / 4,000 match |
+| Mutation tests | injected bugs in the ALU, adder tree, sign extension, load timing, branches, `HALT`, stray register writes and FPGA stores | all caught |
 
 The test plan is in [`tb/README.md`](tb/README.md).
 
@@ -111,9 +114,9 @@ Requires [Icarus Verilog](https://steveicarus.github.io/iverilog/), [Verilator](
 
 ```bash
 brew install icarus-verilog verilator yosys      # macOS; on Ubuntu: apt install iverilog verilator yosys
-make test      # lint, unit testbenches, Python checks, full-system runs (a few seconds)
+make test      # lint, unit testbenches, Python checks, full-system and random runs (about 15 s)
 make perf      # scalar vs SIMD for 1, 2, 4, 8 lanes      -> results/perf.csv
-make syn       # ECP5 place-and-route + Artix-7 estimate  -> results/fpga_*.csv (about 3 min)
+make syn       # ECP5 place-and-route + Artix-7 estimate  -> results/fpga_*.csv (about 4 min)
 make plots     # results/figures/*.png
 make report    # reports/Phase1_Report.pdf (needs tectonic)
 ```
