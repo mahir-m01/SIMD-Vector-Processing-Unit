@@ -1,0 +1,28 @@
+% Fig. 2 - one SIMD instruction: VADD adds eight pairs of 16-bit numbers at once.
+% Each column is a lane; nothing crosses from one lane to the next.
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize,
+    cell/.style={draw=edge, minimum width=8.6mm, minimum height=5.2mm, inner sep=0pt, line width=0.5pt},
+    vin/.style={cell, fill=simdfill},
+    vout/.style={cell, fill=simd!35}]
+
+% Lane labels and the three vector registers (lane 0 on the left).
+\foreach \i in {0,...,7} {
+  \node[note] at (\i*9, 19.5) {lane \i};
+  \node[vin]  (a\i) at (\i*9, 14) {$a_{\i}$};
+  \node[font=\footnotesize] at (\i*9, 8.4) {$+$};
+  \node[vin]  (b\i) at (\i*9, 3) {$b_{\i}$};
+  \node[font=\footnotesize] at (\i*9, -2.6) {$=$};
+  \node[vout] (c\i) at (\i*9, -8) {$c_{\i}$};
+}
+\node[anchor=east] at (-5.5, 14) {\texttt{v1}};
+\node[anchor=east] at (-5.5, 3)  {\texttt{v2}};
+\node[anchor=east] at (-5.5, -8) {\texttt{v3}};
+
+% Lane boundaries: no carry crosses them.
+\foreach \i in {0,...,6}
+  \draw[edge!60, densely dashed, line width=0.4pt] (\i*9+4.5, 17.5) -- (\i*9+4.5, -11.5);
+
+% Width braces above v1.
+\draw[decorate, decoration={brace, amplitude=2pt}, edge] (-4.3, 23) -- node[note, above=1.5pt] {one vector register: $8 \times 16 = 128$ bits} (67.3, 23);
+
+\end{tikzpicture}
