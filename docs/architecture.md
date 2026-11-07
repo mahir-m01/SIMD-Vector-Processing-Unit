@@ -42,7 +42,7 @@ As a result, the cycle count of a program is exact and simple to predict: **cycl
 
 ## Why the scalar baseline is fair
 
-`LANES` is a parameter. With `LANES = 1`, the same design is an ordinary one-number-at-a-time processor: one 16-bit ALU, 16-bit registers and 16-bit memory words. The scalar and SIMD versions run the **same program** with the same instruction set and the same timing rules. Only the number of loop passes changes, because each pass covers `LANES` elements. Any difference in cycle count therefore comes from data-level parallelism alone, not from a better compiler or a different microarchitecture.
+`LANES` is a parameter. With `LANES = 1`, the same design is an ordinary one-number-at-a-time processor: one 16-bit ALU, 16-bit vector registers and 16-bit memory words (the scalar registers stay 32 bits wide). The scalar and SIMD versions run the **same program** with the same instruction set and the same timing rules. Only the number of loop passes changes, because each pass covers `LANES` elements. Any difference in cycle count therefore comes from data-level parallelism alone, not from a better compiler or a different microarchitecture.
 
 ## Parameters
 
@@ -51,7 +51,7 @@ As a result, the cycle count of a program is exact and simple to predict: **cycl
 | `LANES` | 8 | lanes working in parallel (1, 2, 4 or 8 are tested) |
 | `W` | 16 | bits per element; a power of two below 32 (8 or 16), because shifts use `b mod W` and sums are 32 bits wide |
 | `IADDR_W` | 8 | instruction memory size, 2^8 = 256 instructions |
-| `DADDR_W` | 10 in simulation, 9 on the FPGA | data memory size: 1,024 or 512 words of `LANES*W` bits |
+| `DADDR_W` | 10 | data memory size: 1,024 words of `LANES*W` bits, in simulation and on the FPGA |
 
 ## Design choices
 
@@ -81,7 +81,7 @@ What this project takes from each:
 
 * **128-bit registers and all-ones compare masks** come from SSE, Neon and MSA. A mask can be used directly with `VAND` to keep or clear a lane, so conditionals need no branch (`sw/programs/threshold.s`).
 * **The vector–scalar form** follows RISC-V V's `.vx` instructions: the scalar register is broadcast inside the instruction, so no separate splat instruction or spare vector register is needed.
-* **Full reductions** follow Neon's `ADDV` and RISC-V V's `vredsum`. `VDOT` goes one step further than x86 `PMADDWD` and MSA `DOTP_S`, which only add products in pairs: the adder tree adds all eight products into one 32-bit sum.
+* **Full reductions** follow Neon's `ADDV` and RISC-V V's `vredsum`: the adder tree adds all eight lane results into one 32-bit sum, where x86 `PMADDWD` and MSA `DOTP_S` add products in pairs. Those two keep each product at full 32-bit width, though; `VDOT` keeps only its low 16 bits (as `VMUL` does), so its inputs must be small enough for every product to fit. A widening multiply is a Phase 2 candidate.
 * **The `LANES` parameter** plays the role of RISC-V V's implementation-chosen `VLEN`: the same design is built at 1, 2, 4 or 8 lanes. Unlike RISC-V V, a program has to be reassembled for a new lane count (`ITER = N / LANES`). A `vsetvli`-style instruction would remove that step.
 
 Where it is deliberately smaller: 8 vector registers instead of 32 (3-bit register fields keep the encoding and the FPGA register file small); one element size instead of four; no masked (predicated) execution yet. The last two are Phase 2 candidates.
