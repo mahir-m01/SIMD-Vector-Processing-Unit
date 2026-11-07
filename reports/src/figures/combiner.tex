@@ -1,0 +1,32 @@
+% Fig. 5 - the result combiner for 8 lanes. The lane results go straight on as
+% one 128-bit vector; for reduce instructions they are also widened to 32 bits
+% and added in pairs, log2(8) = 3 levels deep.
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize,
+    res/.style={box, fill=simdfill, draw=simd, minimum width=7.6mm, minimum height=5mm, inner sep=0pt},
+    add/.style={circle, draw=scal, fill=scalfill, line width=0.6pt, minimum size=5mm, inner sep=0pt, font=\footnotesize},
+    wire/.style={draw=edge, line width=0.5pt}]
+
+% Lane results r0..r7 (16 bits each).
+\foreach \i in {0,...,7} \node[res] (r\i) at (\i*8.5, 30) {$r_{\i}$};
+\node[note, anchor=south] at (29.75, 33.5) {lane results (16 bits each); together they also form the vector $v_d$};
+
+% Level 1: four adders. Level 2: two. Level 3: one.
+\foreach \j in {0,...,3} \node[add] (a\j) at (\j*17 + 4.25, 20) {$+$};
+\foreach \j in {0,1}     \node[add] (b\j) at (\j*34 + 12.75, 10) {$+$};
+\node[add] (c0) at (29.75, 0) {$+$};
+
+\foreach \j [evaluate=\j as \p using int(2*\j), evaluate=\j as \q using int(2*\j+1)] in {0,...,3} {
+  \draw[wire] (r\p.south) -- (a\j); \draw[wire] (r\q.south) -- (a\j);
+}
+\draw[wire] (a0) -- (b0); \draw[wire] (a1) -- (b0);
+\draw[wire] (a2) -- (b1); \draw[wire] (a3) -- (b1);
+\draw[wire] (b0) -- (c0); \draw[wire] (b1) -- (c0);
+
+\node[box, fill=scalfill, draw=scal, minimum height=5mm] (sum) at (29.75, -10) {32-bit sum $\rightarrow s_d$};
+\draw[arr] (c0) -- (sum);
+
+% Level labels on the right.
+\foreach \y/\t in {25/sign-extend, 20/level 1, 10/level 2, 0/level 3}
+  \node[note, anchor=west] at (66, \y) {\t};
+
+\end{tikzpicture}

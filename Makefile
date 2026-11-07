@@ -102,6 +102,7 @@ plots:
 	$(PLOT) syn/plot_fpga.py
 
 report:
+	$(PLOT) reports/src/make_figures.py
 	cd reports/src && tectonic -X compile main.tex
 	cp reports/src/main.pdf reports/Phase1_Report.pdf
 

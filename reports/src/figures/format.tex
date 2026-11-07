@@ -1,0 +1,36 @@
+% Fig. 3 - the 32-bit instruction word, with four real encodings from vasm.py.
+% One bit = 1.8 mm. Field values under each box are binary (imm in hex).
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize,
+    field/.style={draw=edge, minimum height=6mm, inner sep=0pt, line width=0.5pt, anchor=south west},
+    bits/.style={font=\tiny, text=edge},
+    val/.style={font=\tiny\ttfamily}]
+
+% Field boxes: (left edge, width, label, fill)
+\foreach \x/\w/\t/\f in {0/10.8/opcode/simdfill, 10.8/5.4/rd/white, 16.2/5.4/ra/white,
+                         21.6/5.4/rb/white, 27/1.8/{}/greyfill, 28.8/28.8/{imm (signed)}/white}
+  \node[field, minimum width=\w mm, fill=\f] at (\x,0) {\t};
+
+% Bit numbers: the top bit of each field, and bit 0.
+\foreach \x/\b in {0.9/31, 11.7/25, 17.1/22, 22.5/19, 29.7/15, 56.7/0}
+  \node[bits] at (\x, 7.8) {\b};
+
+% Four encodings (mnemonic on the left, field values under each box).
+\foreach \y/\m/\op/\rd/\ra/\rb/\imm/\hex in {
+    -4/{VADD v3, v1, v2}/000000/011/001/010/0000/01940000,
+    -8/{VMUL v1, v1, s3}/011000/001/001/011/0000/60960000,
+   -12/{VDOT s4, v1, v2}/101000/100/001/010/0000/A2140000,
+   -16/{VLD v1, 4(s1)}/110000/001/001/000/0004/C0900004} {
+  \node[val, anchor=east] at (-0.6, \y) {\m};
+  \node[val] at (5.4, \y) {\op};  \node[val] at (13.5, \y) {\rd};
+  \node[val] at (18.9, \y) {\ra}; \node[val] at (24.3, \y) {\rb};
+  \node[val] at (27.9, \y) {0};   \node[val] at (43.2, \y) {0x\imm};
+  \node[val, text=edge, anchor=west] at (58.6, \y) {\hex};
+}
+
+% Opcode split: class in the top two bits, ALU job in the low four.
+\draw[decorate, decoration={brace, amplitude=2pt, mirror}, edge] (0, -18.5) -- (10.8, -18.5);
+\node[note, align=left, anchor=north west, text width=78mm, inner sep=0pt] at (-14, -21)
+  {\textbf{opcode} = class (2 bits) + job (4 bits).
+   Class \texttt{00} vector--vector, \texttt{01} vector--scalar, \texttt{10} reduce,
+   \texttt{11} memory and control. The job picks one of the 14 ALU operations.};
+\end{tikzpicture}

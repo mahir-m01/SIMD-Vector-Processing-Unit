@@ -1,0 +1,47 @@
+% Fig. 6 - one pass of the vadd loop, cycle by cycle (from vec_control_unit.v).
+% Each VLD takes two cycles; the taken BNE costs nothing because the control
+% unit already sends the branch target (2) to instruction memory in cycle 7.
+\begin{tikzpicture}[x=7.5mm, y=1mm, font=\tiny,
+    sig/.style={draw=edge, line width=0.5pt},
+    hi/.style={draw=simd, line width=0.8pt}]
+
+% sigbus <first cycle> <last cycle + 1> <row y> <text> <fill colour>
+\newcommand{\sigbus}[5]{%
+  \filldraw[sig, fill=#5] ({#1+0.06},{#3+1.8}) -- ({#2-0.06},{#3+1.8}) -- ({#2},{#3}) --
+      ({#2-0.06},{#3-1.8}) -- ({#1+0.06},{#3-1.8}) -- ({#1},{#3}) -- cycle;
+  \node at ({(#1+#2)/2},{#3}) {#4};}
+% sigbit <row y> <list of 0/1 values, one per cycle>
+\newcommand{\sigbit}[2]{%
+  \foreach \v [count=\c from 0] in {#2} {
+    \pgfmathsetmacro{\h}{#1+\v*3.4-1.7}
+    \draw[hi] (\c,\h) -- (\c+1,\h);
+  }}
+
+% Signal names.
+\foreach \y/\t in {30/clk, 23/\texttt{pc}, 16/instruction, 9/\texttt{load\_wait}, 2/\texttt{vreg\_write}, -5/\texttt{imem\_addr}}
+  \node[anchor=east, font=\scriptsize] at (-0.15,\y) {\t};
+
+% Cycle numbers and the clock.
+\foreach \c in {0,...,8} {
+  \node[text=edge] at (\c+0.5, 35.5) {\c};
+  \draw[sig] (\c,28.3) -- (\c,31.7) -- (\c+0.5,31.7) -- (\c+0.5,28.3) -- (\c+1,28.3);
+  \draw[edge!25, line width=0.3pt] (\c,-8) -- (\c,33);
+}
+
+% Program counter, instruction and next-address buses.
+\foreach \a/\b/\t in {0/2/2, 2/4/3, 4/5/4, 5/6/5, 6/7/6, 7/8/7, 8/9/2} {\sigbus{\a}{\b}{23}{\t}{white}}
+\foreach \a/\b/\t in {0/2/{VLD v1}, 2/4/{VLD v2}, 4/5/VADD, 5/6/VST, 6/7/ADDI, 7/8/BNE, 8/9/{VLD v1}}
+  {\sigbus{\a}{\b}{16}{\texttt{\t}}{simdfill}}
+\foreach \a/\b/\t in {0/1/2, 1/3/3, 3/4/4, 4/5/5, 5/6/6, 6/7/7, 8/9/2} {\sigbus{\a}{\b}{-5}{\t}{white}}
+\sigbus{7}{8}{-5}{\textbf{2}}{scalfill}
+
+% One-bit signals.
+\sigbit{9}{0,1,0,1,0,0,0,0,0}
+\sigbit{2}{0,1,0,1,1,0,0,0,0}
+\foreach \c in {1,2,3,4} \draw[hi] (\c,7.3) -- (\c,10.7);   % load_wait edges
+\foreach \c in {1,2,3,5} \draw[hi] (\c,0.3) -- (\c,3.7);    % vreg_write edges
+
+% What one pass costs.
+\draw[decorate, decoration={brace, amplitude=2pt, mirror}, edge] (0,-9.5) -- node[below=2pt, font=\scriptsize, text=edge]
+  {one loop pass: 6 instructions + 2 loads = 8 cycles} (8,-9.5);
+\end{tikzpicture}

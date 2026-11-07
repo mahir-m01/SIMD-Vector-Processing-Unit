@@ -1,0 +1,39 @@
+% Fig. 1 - the Phase I flow: how every result in the report is produced.
+% Top row: correctness and cycle counts. Bottom row: hardware cost and clock.
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize,
+    stage/.style={box, minimum width=24mm, minimum height=11mm},
+    key/.style={stage, draw=simd, line width=0.9pt}]
+
+% ---- Top row: simulation ------------------------------------------------------
+\node[stage] (prog) at (0,0)    {\textbf{Workloads}\\6 programs, directed\\and random tests};
+\node[stage] (asm)  at (30,0)   {\textbf{Assembler}\\\texttt{vasm.py}\\machine code};
+\node[stage] (gold) at (60,8)   {\textbf{Golden model}\\\texttt{golden.py}: memory,\\registers, cycles};
+\node[key]   (rtl)  at (60,-8)  {\textbf{RTL simulation}\\\texttt{simd\_core}, Icarus\\$L = 1, 2, 4, 8$};
+\node[key]   (cmp)  at (90,0)   {\textbf{Exact compare}\\all memory words,\\registers, cycles};
+\node[stage] (cyc)  at (120,0)  {\textbf{Cycle counts}\\speed-up,\\elements per cycle};
+
+% ---- Bottom row: hardware ----------------------------------------------------------
+\node[stage] (mods) at (0,-34)  {\textbf{RTL blocks}\\9 Verilog modules,\\unit testbenches};
+\node[stage] (top)  at (30,-34) {\textbf{FPGA top}\\block RAM, power-on\\reset, LEDs};
+\node[stage] (brd)  at (60,-34) {\textbf{Board check}\\registers and memory\\match the model};
+\node[key]   (pnr)  at (90,-34) {\textbf{Synthesis, P\&R}\\Yosys + nextpnr,\\ECP5, 3 seeds};
+\node[stage] (res)  at (120,-34){\textbf{Resources, $F_{\max}$}\\cells, multipliers,\\block RAM};
+
+% ---- Where the two rows meet -------------------------------------------------------
+\node[key] (wall) at (150,-17)  {\textbf{Wall-clock}\\\textbf{speed-up}\\cycles $\times$ clock};
+
+\draw[arr] (prog) -- (asm);
+\draw[arr] (asm.east) -- ++(3,0) |- (gold.west);
+\draw[arr] (asm.east) -- ++(3,0) |- (rtl.west);
+\draw[arr] (gold.east) -- ++(3,0) |- (cmp.west);
+\draw[arr] (rtl.east) -- ++(3,0) |- (cmp.west);
+\draw[arr] (cmp) -- (cyc);
+\draw[arr] (cyc.east) -- ++(4,0) |- (wall.west);
+\draw[arr] (res.east) -- ++(4,0) |- (wall.west);
+
+\draw[arr] (mods) -- (top);
+\draw[arr] (top) -- (brd);
+\draw[arr] (brd) -- (pnr);
+\draw[arr] (pnr) -- (res);
+\draw[arr] (mods.north) -- (0,-21) -- node[note, above, pos=0.55] {same RTL} (60,-21) -- (rtl.south);
+\end{tikzpicture}

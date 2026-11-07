@@ -1,0 +1,56 @@
+% Fig. 4 - block diagram of the unit (8 lanes shown). Blue = vector datapath,
+% orange = scalar side, grey = control and memories. Dashed = control signals.
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize,
+    blk/.style={box, minimum height=10mm, inner sep=3pt},
+    vblk/.style={blk, fill=simdfill, draw=simd},
+    sblk/.style={blk, fill=scalfill, draw=scal},
+    gblk/.style={blk, fill=greyfill},
+    lane/.style={box, fill=simdfill, draw=simd, minimum width=13mm, minimum height=7mm, font=\scriptsize},
+    lbl/.style={note}]
+
+% ---- Blocks ---------------------------------------------------------------------
+\node[gblk, minimum width=30mm] (imem) at (0,8)     {Instruction memory\\\scriptsize block RAM, 256 words};
+\node[gblk, minimum width=46mm] (ctrl) at (70,8)    {Vector control unit\\\scriptsize decode $\cdot$ next PC $\cdot$ branch $\cdot$ load wait};
+
+\node[vblk, minimum width=32mm] (vrf)  at (0,-30)   {Vector register file\\\scriptsize \texttt{v0}--\texttt{v7}, $8 \times 128$ bits};
+\node[vblk, minimum width=22mm] (mux)  at (38,-42)  {Lane MUX\\\scriptsize vector / broadcast};
+
+\node[lane] (l0) at (72,-22) {ALU 0};
+\node[lane] (l1) at (72,-31) {ALU 1};
+\node[font=\scriptsize] at (72,-38) {$\vdots$};
+\node[lane] (l7) at (72,-45) {ALU 7};
+\begin{scope}[on background layer]
+  \node[draw=simd, dashed, rounded corners=3pt, fit=(l0)(l7), inner sep=3pt] (lanes) {};
+\end{scope}
+\node[lbl, below=0.5mm] at (lanes.south) {8 parallel lane ALUs};
+
+\node[vblk, minimum width=30mm] (comb) at (112,-34) {Result combiner\\\scriptsize vector $\cdot$ adder-tree sum};
+
+\node[sblk, minimum width=32mm] (srf)  at (0,-74)   {Scalar register file\\\scriptsize \texttt{s0}--\texttt{s7}, $8 \times 32$ bits};
+\node[sblk, minimum width=22mm] (sadd) at (38,-74)  {Scalar adder\\\scriptsize ADDI $\cdot$ address};
+\node[gblk, minimum width=30mm] (dmem) at (112,-74) {Data memory\\\scriptsize 128-bit words, block RAM};
+
+% ---- Fetch loop: the next address goes out one cycle early ----------------------
+\draw[arr] (imem.east) -- node[above, lbl]{instruction} (ctrl.west);
+\draw[arr] (ctrl.north) -- ++(0,5) -| node[pos=0.25, above, lbl]{next PC (fetched one cycle early)} (imem.north);
+
+% ---- Control signals ---------------------------------------------------------------
+\draw[arr, dashed] (ctrl.south -| lanes.north) -- node[right, lbl, pos=0.3]{\texttt{alu\_op}, \texttt{use\_scalar}} (lanes.north);
+
+% ---- Vector datapath ------------------------------------------------------------------
+\draw[arr] (vrf.east |- l0) -- node[above, lbl, pos=0.2]{$v_a$} (lanes.west |- l0);
+\draw[arr] (vrf.east |- 0,-36) -- node[above, lbl]{$v_b$} (24,-36) |- (mux.west);
+\draw[arr] (mux.east) -- node[above, lbl]{$b$} (lanes.west |- mux.east);
+\draw[arr] (lanes.east |- comb.west) -- (comb.west);
+
+% ---- Write-back: lane results or loaded data go into a vector register -----------
+\draw[arr] (comb.north) -- (112,-12) -| node[pos=0.3, above, lbl]{write back to $v_d$} (vrf.north);
+\draw[draw=edge, line width=0.6pt] (dmem.east) -- (136,-74) -- node[right, lbl, pos=0.5]{load data} (136,-12) -- (112,-12);
+
+% ---- Scalar side -------------------------------------------------------------------------
+\draw[arr, draw=scal] (srf.north -| 6,0) -- (6,-56) -- node[above, lbl, pos=0.5]{$s_b$ broadcast} (38,-56) -- (mux.south);
+\draw[arr, draw=scal] (comb.south) -- (112,-60) -- node[above, lbl, pos=0.4]{sum to $s_d$ (\texttt{VDOT}, \texttt{VRED})} (24,-60) -- (24,-70) -- (srf.east |- 0,-70);
+\draw[arr, draw=scal] (srf.east |- 0,-78) -- (sadd.west |- 0,-78);
+\draw[arr] (sadd.east) -- node[above, lbl]{address} (dmem.west);
+\draw[arr] (vrf.west) -- (-20,-30) -- (-20,-86) -- node[below, lbl, pos=0.5]{store data ($v_b$, \texttt{VST})} (112,-86) -- (dmem.south);
+\end{tikzpicture}
