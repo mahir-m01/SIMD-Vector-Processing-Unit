@@ -1,216 +1,330 @@
 % =============================================================================
 % Phase I report - SIMD Vector Processing Unit
-% Build:  make report   (or: cd reports/src && tectonic -X compile main.tex)
+% Build:  make report
+%   (runs reports/src/make_figures.py for the result plots, then tectonic)
+% The diagrams are TikZ files in figures/, drawn in the same font as the text.
 % =============================================================================
-\documentclass[conference]{IEEEtran}
+\documentclass[journal]{IEEEtran}
 \usepackage[T1]{fontenc}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{array}
 \usepackage{amsmath}
-\usepackage{siunitx}
+\usepackage{cite}
 \usepackage{url}
 \usepackage{xcolor}
 \usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, fit, backgrounds, decorations.pathreplacing}
 \usepackage[hidelinks]{hyperref}
 
-% ---- Edit these two lines with the official affiliation ---------------------
-\newcommand{\AFFIL}{Department of Computer Applications}
-\newcommand{\INST}{University Name, City, India}
+% ---- Colours shared by every diagram and plot --------------------------------
+% blue = vector / SIMD side, orange = scalar side, grey = control and memories
+\definecolor{simd}{HTML}{3F7FDC}     \definecolor{simdfill}{HTML}{E9F1FC}
+\definecolor{scal}{HTML}{EF6F3C}     \definecolor{scalfill}{HTML}{FDEEE7}
+\definecolor{edge}{HTML}{6F6E69}     \definecolor{greyfill}{HTML}{F4F4F3}
+\tikzset{
+  box/.style={draw=edge, rounded corners=2pt, fill=white, align=center, inner sep=2pt, line width=0.5pt},
+  arr/.style={-{Stealth[length=1.6mm, width=1.2mm]}, draw=edge, line width=0.6pt},
+  note/.style={font=\scriptsize, text=edge},
+}
 
-\lstset{basicstyle=\ttfamily\footnotesize, columns=fullflexible, frame=single,
-        framerule=0.3pt, rulecolor=\color{gray}, xleftmargin=2pt, xrightmargin=2pt,
-        commentstyle=\color{gray}, morecomment=[l]{\#}}
+\lstset{basicstyle=\ttfamily\footnotesize, columns=flexible, keepspaces=true, frame=single,
+        framerule=0.3pt, rulecolor=\color{edge}, xleftmargin=2pt, xrightmargin=2pt,
+        commentstyle=\color{edge}, morecomment=[l]{\#}}
+
+\newcommand{\x}{\ensuremath{\times}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 
 \begin{document}
 
 \title{Design and Evaluation of a Parameterised\\SIMD Vector Processing Unit on FPGA}
 
-\author{
-\IEEEauthorblockN{Mahir\IEEEauthorrefmark{1}, Krishiv Gupta\IEEEauthorrefmark{1}, Abhiman Singh\IEEEauthorrefmark{1}, Jayadeep\IEEEauthorrefmark{1} and Ashish Kushwaha\IEEEauthorrefmark{1}}
-\IEEEauthorblockA{\IEEEauthorrefmark{1}\AFFIL, \INST\\
-Repository: \url{https://github.com/mahir-m01/SIMD-Vector-Processing-Unit}}
-}
+\author{Mahir Abdullah, Krishiv Gupta, Abhiman Singh, Gogulamudi Jayadeep, and Ashish Kushwaha%
+\thanks{This work forms Phase I of Project 11, SIMD Vector Processing Unit, November 2026.
+The authors are with Newton School of Technology, Rishihood University.}%
+\thanks{Code, data and all reported results are available at
+\url{https://github.com/mahir-m01/SIMD-Vector-Processing-Unit}.}}
+
+\markboth{Design and Evaluation of a Parameterised SIMD Vector Processing Unit on FPGA}%
+{Design and Evaluation of a Parameterised SIMD Vector Processing Unit on FPGA}
 
 \maketitle
 
 % =============================================================================
 \begin{abstract}
-Many workloads in signal processing, graphics and machine learning apply the same
-arithmetic to long arrays of numbers. Single-instruction, multiple-data (SIMD)
-hardware exploits this regularity by letting one instruction drive several
-arithmetic lanes at once. This report presents the Phase~I design of a small,
-fully parameterised SIMD vector processing unit written in Verilog. It provides
-eight 128-bit vector registers split into eight 16-bit lanes, a 14-operation lane
-ALU replicated per lane, per-lane operand multiplexers for scalar broadcast, and a
-result combiner whose adder tree turns a dot-product step into one instruction.
-Setting the lane count to one turns the same design into a scalar processor,
-which gives a like-for-like baseline: same instruction set, same program, same
-timing rules. A Python golden model, unit and system testbenches and mutation
-tests verify the design. All six test programs match the model exactly in
-memory, registers and cycle count for 1, 2, 4 and 8 lanes. On five benchmark
-kernels, eight lanes need $7.87$--$7.92\times$ fewer clock cycles than one. After
-place-and-route on a Lattice ECP5-25F, the 8-lane unit uses 19\% of the logic and
-closes timing at \SI{33.6}{MHz}, against \SI{50.8}{MHz} for one lane, giving a
-wall-clock speed-up of $5.2\times$.
+Signal processing, graphics and machine learning apply the same arithmetic to long
+arrays of numbers. Single-instruction, multiple-data (SIMD) hardware exploits this
+regularity: one instruction drives several arithmetic lanes at once. We present the
+Phase~I design of a small SIMD vector processing unit in Verilog whose lane count is
+a parameter. At eight lanes it holds eight 128-bit vector registers of eight 16-bit
+elements, replicates a 14-operation lane ALU, broadcasts a scalar operand through
+per-lane multiplexers and sums the lanes in an adder tree, so that a dot-product step
+is one instruction. With one lane the same RTL becomes a scalar processor that runs
+the same programs with the same 48-instruction ISA and timing rules, which gives a
+like-for-like baseline. An instruction-level golden model predicts every result and
+the exact cycle count; unit, system, directed, random-program and board testbenches
+compare the hardware with it, and deliberately injected bugs confirm that the tests
+catch faults. Every run, including 4,000 random programs, matches the model exactly
+for 1, 2, 4 and 8 lanes. On five kernels of 256
+elements, eight lanes need $7.87$--$7.92\x$ fewer clock cycles than one, 1.0--1.7\%
+below ideal, and the shortfall is the serial set-up code predicted by Amdahl's law.
+Built with every instruction in use and placed and routed on a Lattice ECP5-25F, the
+eight-lane unit uses 22.2\% of the logic cells, and its estimated maximum clock is
+29.1~MHz against 43.3~MHz for one lane, so the wall-clock speed-up is $5.3\x$ and
+throughput rises from 5.6 to 29.9 million elements per second.
 \end{abstract}
 
 \begin{IEEEkeywords}
-SIMD, vector processor, data-level parallelism, FPGA, Verilog, hardware verification.
+Data-level parallelism, FPGA, golden model, hardware verification, SIMD, vector
+processor, Verilog.
 \end{IEEEkeywords}
 
 % =============================================================================
 \section{Introduction}
 
-A scalar processor spends most of its effort on control: fetching, decoding and
-sequencing each instruction. When a program adds two arrays, that effort is
-repeated for every element, although every element needs the same work. A SIMD
+\IEEEPARstart{A}{} scalar processor spends most of its effort on control: fetching,
+decoding and sequencing each instruction. When a program adds two arrays, that effort
+is repeated for every element, although every element needs the same work. A SIMD
 processor issues one instruction for a group of elements. The control cost is paid
 once and the arithmetic is replicated across \emph{lanes}. This is
 \emph{data-level parallelism}, the form of parallelism behind vector
-supercomputers, multimedia instruction-set extensions and GPUs~\cite{hp6}.
+supercomputers~\cite{cray1}, multimedia instruction-set extensions~\cite{mmx} and
+graphics processors~\cite{hp6}.
 
-The goal of this project is to design such a unit at a scale that can be built,
-verified and measured within a semester, and to answer three questions with
-numbers rather than claims:
+\textbf{Problem statement.} The project asks for a small SIMD unit that performs
+identical arithmetic and logic operations in parallel, built from a vector register
+file, parallel ALUs, a vector control unit, lane multiplexers, a result combiner and
+an optional scalar interface. Scalar and SIMD versions of the same workload must be
+compared, the vector results verified, and cycle counts, throughput, FPGA resources
+and maximum frequency measured. We answer three questions with measurements:
 \begin{enumerate}
-\item How close to the ideal $N\times$ does an $N$-lane unit come, measured in clock cycles?
+\item How close to the ideal $L\x$ does an $L$-lane unit come in clock cycles?
 \item What does each extra lane cost in FPGA logic, multipliers and memory?
-\item How much does the wider datapath slow the clock, and what wall-clock speed-up is left?
+\item How much does the wider datapath slow the clock, and what wall-clock speed-up
+      remains?
 \end{enumerate}
 
-The Phase~I contributions are:
+This paper reports Phase~I of a two-phase project. Its contributions are:
 \begin{itemize}
-\item a synthesizable, lane-parameterised SIMD unit in Verilog with the blocks named
-      in the project brief: vector register file, parallel ALUs, vector control unit,
-      lane multiplexers, result combiner and a scalar interface (Section~\ref{sec:design});
-\item a 48-instruction ISA (14 ALU operations in three forms plus six
-      others), an assembler and an instruction-level golden model that
-      predicts results and exact cycle counts (Section~\ref{sec:isa});
-\item a layered verification flow with self-checking testbenches, coverage counters
-      and mutation tests (Section~\ref{sec:verif});
+\item a synthesizable SIMD unit in Verilog whose lane count is a parameter, with every
+      block named in the brief (Section~\ref{sec:design});
+\item a 48-instruction ISA, an assembler and an instruction-level golden model that
+      predicts results and exact cycle counts (Sections~\ref{sec:isa}
+      and~\ref{sec:tools});
+\item a layered verification flow with self-checking testbenches, directed corner
+      tests, random programs, a board-level check and mutation tests
+      (Section~\ref{sec:verif});
 \item a scalar-versus-SIMD comparison on five kernels and an FPGA resource and
       frequency sweep over 1, 2, 4 and 8 lanes (Section~\ref{sec:results}).
 \end{itemize}
 
+Section~\ref{sec:lit} reviews related work. Section~\ref{sec:design} describes the
+design, its tools and its verification, and Section~\ref{sec:results} presents the
+results. Section~\ref{sec:discussion} discusses them and their limits, and
+Section~\ref{sec:conclusion} concludes with the Phase~II plan. Fig.~\ref{fig:flow}
+gives an overview of the flow that produces every result.
+
+\begin{figure*}[t]
+\centering
+\input{figures/flow.tex}
+\caption{Phase I flow. Top: each program is assembled once and run on the golden model
+and on the RTL core at every lane count; memory, registers, instruction count and cycle
+count must match exactly. Bottom: the same RTL is wrapped with block-RAM memories,
+checked from power-on in simulation, then placed and routed for resources and maximum
+clock frequency. Cycle counts and clock frequency together give the wall-clock speed-up.}
+\label{fig:flow}
+\end{figure*}
+
 % =============================================================================
-\section{Literature Review}
+\section{Literature Review}\label{sec:lit}
 
-\subsection{Taxonomy and early vector machines}
-Flynn's taxonomy~\cite{flynn72} classifies machines by the number of instruction
-and data streams. SIMD names the case of one instruction stream acting on many data
-elements. The first commercially successful SIMD designs were vector supercomputers
-such as the Cray-1~\cite{cray1}. Its vector registers and pipelined functional units
-let one instruction process up to 64 elements, which hid memory latency and avoided
-the instruction-issue cost of a scalar loop. Hennessy and Patterson~\cite{hp6} trace
-the same principles from vector machines to subword-SIMD extensions and GPUs.
+\textbf{Taxonomy and vector machines.} Flynn's taxonomy~\cite{flynn72} classifies
+machines by the number of instruction and data streams; SIMD names one instruction
+stream acting on many data elements. The first commercially successful SIMD designs
+were vector supercomputers such as the Cray-1~\cite{cray1}, whose vector registers and
+pipelined functional units let one instruction process up to 64 elements, hiding memory
+latency and avoiding the issue cost of a scalar loop. Espasa~\emph{et
+al.}~\cite{espasa98} review the history of vector architectures and argue that their
+strengths, few instructions per unit of work and simple control, suit multimedia
+workloads. Hennessy and Patterson~\cite{hp6} trace the same principles from
+vector machines to subword SIMD and GPUs.
 
-\subsection{Subword SIMD in general-purpose processors}
-Intel MMX~\cite{mmx} introduced \emph{packed} data types: one 64-bit register
-treated as eight bytes or four 16-bit words, with one instruction operating on all
-of them. Streaming SIMD Extensions (SSE)~\cite{sse} widened the registers to 128
-bits. ARM NEON uses the same width. Two conventions from this line of work are
-adopted here directly: compare instructions that write all-ones or all-zeros masks,
-so conditionals need no branch, and a fixed 128-bit register divided into lanes.
+\textbf{Subword SIMD in general-purpose processors.} Intel MMX~\cite{mmx} introduced
+\emph{packed} data types: one 64-bit register treated as eight bytes or four 16-bit
+words, with one instruction operating on all of them. Streaming SIMD Extensions
+(SSE)~\cite{sse} widened the registers to 128 bits, the width also used by Arm Neon.
+Two conventions from this line of work are adopted directly here: compare instructions
+that write all-ones or all-zeros masks, so that conditionals need no branch, and a
+fixed 128-bit register divided into lanes.
 
-\subsection{Scalable vector architectures}
-VIRAM~\cite{viram} showed that a vector architecture with lanes scales across
-embedded media workloads more simply than superscalar or VLIW designs. A compiler
-could vectorise most kernels automatically. Asanovi\'c~\cite{asanovic98} analysed
-lane-based vector microprocessors in depth. Lee~\emph{et al.}~\cite{maven} compared
-MIMD, vector-SIMD, subword-SIMD and SIMT designs and found vector cores more
-efficient even on fairly irregular kernels. The RISC-V vector extension~\cite{rvv}
-standardises a length-agnostic vector ISA. Ara~\cite{ara} implements it with
-identical lanes, each holding a slice of the vector register file, and reaches over
-\SI{1}{GHz} in 22-nm technology. The lane-replication scheme used in this project
-follows the same idea at a much smaller scale.
+\textbf{Scalable vector architectures.} VIRAM~\cite{viram} showed that a vector
+architecture with lanes scales across embedded media workloads more simply than
+superscalar or VLIW designs, and that a compiler can vectorise most kernels
+automatically. Asanovi\'c~\cite{asanovic98} analysed lane-based vector microprocessors
+in depth, and Lee~\emph{et al.}~\cite{maven} found vector cores more efficient than
+MIMD, subword-SIMD and SIMT designs even on fairly irregular kernels. Two current ISAs
+leave the vector length to the implementation: the RISC-V vector extension~\cite{rvv}
+and the Arm Scalable Vector Extension, which allows registers from 128 to 2048 bits
+under one vector-length-agnostic programming model~\cite{sve}. Ara~\cite{ara}
+implements RISC-V V with identical lanes, each holding a slice of the vector register
+file, and reaches over 1~GHz in 22-nm technology. The lane replication used in this
+project follows the same idea at a much smaller scale.
 
-\subsection{Current SIMD instruction sets}
-Table~\ref{tab:isas} compares this unit with SIMD instruction sets in use today.
-Intel SSE2 and AVX2~\cite{intelsdm}, Arm Neon~\cite{armarm} and the MIPS SIMD
-Architecture (MSA)~\cite{msa} fix the register width in the ISA. RISC-V V~\cite{rvv}
-leaves the width (\texttt{VLEN}) to each implementation and lets one binary run on any
-width through \texttt{vsetvli}. Three conventions are adopted here. The 128-bit
-register and the all-ones compare mask follow SSE, Neon and MSA. The vector--scalar
-form follows RISC-V V's \texttt{.vx} instructions. A full sum across lanes follows
-Neon's \texttt{ADDV} and RISC-V V's \texttt{vredsum}. x86 \texttt{PMADDWD} and
-MSA \texttt{DOTP\_S} only add products in pairs.
+\textbf{Current SIMD instruction sets.} Table~\ref{tab:isas} compares this unit with
+instruction sets in use today. Intel SSE2 and AVX2~\cite{intelsdm}, Arm
+Neon~\cite{armarm} and the MIPS SIMD Architecture (MSA)~\cite{msa} fix the register
+width in the ISA; RISC-V V lets one binary run on any width through \texttt{vsetvli}.
+Three conventions are adopted here. The 128-bit register and the all-ones compare mask
+follow SSE, Neon and MSA. The vector--scalar form follows RISC-V V's \texttt{.vx}
+instructions, which broadcast a scalar register inside the instruction. A full sum
+across lanes follows Neon's \texttt{ADDV} and RISC-V V's \texttt{vredsum}, whereas x86
+\texttt{PMADDWD} and MSA \texttt{DOTP\_S} only add products in pairs; those two keep
+each product at 32 bits, while \texttt{VDOT} keeps its low 16 bits.
 
 \begin{table}[t]
 \centering
-\caption{SIMD instruction sets compared}
+\caption{SIMD Instruction Sets Compared}
 \label{tab:isas}
 \footnotesize
+\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lllll}
 \toprule
-ISA & Width & Regs & Int. elements & Sum across lanes \\
+ISA & Width (bits) & Regs & Int.\ elements & Sum across lanes \\
 \midrule
-SSE2 & 128 & 8/16 & 8--64 & pairs (\texttt{PMADDWD}) \\
-AVX2 & 256 & 16 & 8--64 & pairs (\texttt{VPMADDWD}) \\
-Neon (A64) & 128 & 32 & 8--64 & full (\texttt{ADDV}) \\
-MIPS MSA & 128 & 32 & 8--64 & pairs (\texttt{DOTP\_S}) \\
-RISC-V V & \texttt{VLEN} & 32 & 8--64 & full (\texttt{vredsum}) \\
-This work & 128 & 8 & 16 & full (\texttt{VDOT}) \\
+SSE2       & 128           & 8/16 & 8--64 & pairs (\texttt{PMADDWD}) \\
+AVX2       & 256           & 16   & 8--64 & pairs (\texttt{VPMADDWD}) \\
+Neon (A64) & 128           & 32   & 8--64 & full (\texttt{ADDV}) \\
+MIPS MSA   & 128           & 32   & 8--64 & pairs (\texttt{DOTP\_S}) \\
+RISC-V V   & \texttt{VLEN} & 32   & 8--64 & full (\texttt{vredsum}) \\
+This work  & $16L$ (128)   & 8    & 16    & full, 16-bit products \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Soft vector processors on FPGAs}
-FPGAs are a natural host for lane-replicated designs because the lane count can be
-matched to the device. VESPA~\cite{vespa} showed a soft vector processor whose lane
-count and width can be scaled and customised to each application. VIPERS~\cite{vipers}
-used a soft vector unit as a general-purpose accelerator for a Nios~II processor and
-reported up to $44\times$ speed-up with 32 lanes. VEGAS~\cite{vegas} replaced the
-vector register file with a scratchpad and introduced fracturable ALUs. The
-VectorBlox MXP~\cite{mxp} turned these ideas into a commercial IP core with 1 to over
-128 ALUs. These works report speed-up against a separate host processor, so the
-baseline differs from the vector unit in its microarchitecture as well as its width.
+\textbf{Soft vector processors on FPGAs.} FPGAs suit lane-replicated designs because
+the lane count can be matched to the device. VESPA~\cite{vespa} showed a soft vector
+processor whose lane count and width can be scaled and customised to each application.
+VIPERS~\cite{vipers} used a soft vector unit as a general-purpose accelerator for a
+Nios~II processor and reported up to $44\x$ speed-up over a Nios~II/s with 32 lanes, at
+$26\x$ its area. VEGAS~\cite{vegas} replaced the
+vector register file with a scratchpad and introduced fracturable ALUs, and the
+VectorBlox MXP~\cite{mxp} turned these ideas into a commercial core with 1 to over 128
+ALUs. Vicuna~\cite{vicuna} is an open-source RISC-V vector coprocessor designed so that
+its execution time is predictable, which allows tight worst-case timing analysis.
+Most of these works report speed-up against a separate host processor, so the baseline
+differs from the vector unit in microarchitecture as well as in width.
 
-\subsection{Performance limits and tools}
-Amdahl's law~\cite{amdahl} bounds the speed-up of any parallel unit by the fraction
-of work that stays serial. In a vector loop that fraction is the set-up code, the
-loop control and the final reduction. Open-source flows now make resource and timing
-results reproducible: Yosys and nextpnr~\cite{nextpnr} synthesise and place designs
-for Lattice ECP5 using documented timing models, and Icarus Verilog~\cite{icarus}
-simulates them.
+\textbf{Performance limits.} Amdahl's law~\cite{amdahl} bounds the speed-up of any
+parallel unit by the fraction of work that stays serial; in a vector loop that
+fraction is the set-up code, the loop control and the final reduction. Gustafson's
+observation~\cite{gustafson} that larger problems shrink the serial fraction explains
+why speed-up grows with array length. 
 
-\subsection{Gap addressed}
-Published soft vector processors are large and complex, and they are usually
-compared against a different scalar core. This project builds a design small
-enough for every line to be explained and verified. Its scalar baseline is the
-\emph{same} RTL with one lane, so any measured gain comes only from data-level
-parallelism.
+\textbf{Verification and tools.} Comparing a design against an independent
+instruction-level model is standard practice in processor verification, and mutation
+testing~\cite{demillo} judges a test suite by whether it detects deliberately injected
+faults. Open-source flows make resource and timing results reproducible: Icarus
+Verilog~\cite{icarus} simulates, Verilator~\cite{verilator} lints, and
+Yosys~\cite{yosys} with nextpnr~\cite{nextpnr} synthesise, place and route designs for
+the Lattice ECP5 using documented timing models.
+
+\textbf{Gap addressed.} Published soft vector processors are large and are usually
+compared against a different scalar core. This project builds a design small enough
+for every line to be explained and verified. Its scalar baseline is the \emph{same}
+RTL with one lane, so any measured gain comes from data-level parallelism alone, and
+its timing is as predictable as Vicuna's in a far simpler form: the cycle count of
+every program follows from its instruction and load counts.
 
 % =============================================================================
 \section{Proposed Solution}\label{sec:design}
 
-\begin{figure*}[t]
+\subsection{Design Goals and Parameters}
+The design favours clarity over speed. Every instruction except a load completes in one
+clock cycle, so there are no pipeline hazards and the cycle count of a program is exact.
+Two parameters set the shape (Table~\ref{tab:params}): the number of lanes $L$ and the
+element width $W = 16$ bits. With $L = 8$ a vector holds $8 \times 16 = 128$ bits, the
+width of SSE and Neon (Fig.~\ref{fig:lanes}). The memories sit outside the core, so the
+same RTL is used in simulation and on the FPGA. The RTL is plain Verilog (IEEE 1364-2005~\cite{ieee1364}):
+one module per block, \texttt{generate} loops for the lanes and no vendor primitives.
+
+\begin{table}[t]
 \centering
-\includegraphics[width=0.86\textwidth]{figures/block_diagram.pdf}
-\caption{Block diagram of the SIMD vector processing unit (8 lanes shown). Dashed: control signals.}
-\label{fig:block}
-\end{figure*}
+\caption{Design Parameters}
+\label{tab:params}
+\footnotesize
+\begin{tabular}{llL{0.48\columnwidth}}
+\toprule
+Parameter & Value & Meaning \\
+\midrule
+\texttt{LANES} ($L$) & 1, 2, 4, 8 & lanes in parallel (default 8) \\
+\texttt{W}           & 16         & bits per element (signed) \\
+vector registers     & $8 \times 16L$ bits & \texttt{v0}--\texttt{v7} \\
+scalar registers     & $8 \times 32$ bits  & \texttt{s0}--\texttt{s7}, \texttt{s0} always 0 \\
+\texttt{IADDR\_W}    & 8          & 256 instructions \\
+\texttt{DADDR\_W}    & 10         & 1,024 data words (also on the FPGA) \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\subsection{Overview}
-Fig.~\ref{fig:block} shows the unit. Two parameters set its shape: the number of
-lanes $L$ (1, 2, 4 or 8) and the element width $W = 16$ bits. With $L = 8$ a vector
-holds $8 \times 16 = 128$ bits, the width of SSE and NEON. The instruction and data
-memories sit outside the core, so the same RTL is used both in simulation and on
-the FPGA (where \texttt{fpga\_top.v} adds block-RAM memories, switches and LEDs).
+\begin{figure}[t]
+\centering
+\input{figures/lanes.tex}
+\caption{One SIMD instruction. A 128-bit register holds eight 16-bit elements, one per
+lane, and \texttt{VADD} adds all eight pairs at once. Lanes are independent: no carry
+crosses a lane boundary (dashed). The scalar build ($L = 1$) runs the same program with
+one element per register.}
+\label{fig:lanes}
+\end{figure}
 
-\subsection{Instruction set}\label{sec:isa}
-Instructions are 32 bits: a 6-bit opcode, three 3-bit register fields (\texttt{rd},
-\texttt{ra}, \texttt{rb}) and a signed 16-bit immediate. The two top opcode bits
-select the class:
-\begin{itemize}
-\item \textbf{vector--vector}: $v_d[i] = v_a[i] \circ v_b[i]$ for every lane $i$;
-\item \textbf{vector--scalar}: $v_d[i] = v_a[i] \circ s_b$, the scalar broadcast to all lanes;
-\item \textbf{reduce}: $s_d = \sum_i (v_a[i] \circ v_b[i])$. With $\circ = \times$ this is \texttt{VDOT};
-\item \textbf{memory and control}: \texttt{VLD}, \texttt{VST}, \texttt{ADDI}, \texttt{ADD}, \texttt{BNE}, \texttt{HALT}.
-\end{itemize}
-The operation $\circ$ is one of 14 ALU jobs: \texttt{ADD}, \texttt{SUB},
-\texttt{AND}, \texttt{OR}, \texttt{XOR}, three shifts, \texttt{MUL} (low half),
-\texttt{SEQ}, \texttt{SLT}, \texttt{SLTU}, \texttt{MIN} and \texttt{MAX}. Compare
-jobs produce all-ones or all-zeros per lane. The vector add kernel, for example, is:
+\subsection{Instruction Set}\label{sec:isa}
+Instructions are 32 bits: a 6-bit opcode, three 3-bit register fields and a signed
+16-bit immediate (Fig.~\ref{fig:format}). The two top opcode bits select one of four
+classes (Table~\ref{tab:isa}); in the first three, the low four bits select one of 14
+ALU jobs: \texttt{ADD}, \texttt{SUB}, \texttt{AND}, \texttt{OR}, \texttt{XOR}, three
+shifts (\texttt{SLL}, \texttt{SRL}, \texttt{SRA}, by $b \bmod 16$), \texttt{MUL} (low
+16 bits), \texttt{SEQ}, \texttt{SLT}, \texttt{SLTU}, \texttt{MIN} and \texttt{MAX}.
+Fourteen jobs in three forms plus six memory, scalar and control instructions give 48
+instructions. Compare jobs write \texttt{0xFFFF} for true and 0 for false, so a result
+can be used directly as a mask with \texttt{VAND}. Arithmetic wraps around on overflow
+($32767 + 1 = -32768$). Data addresses wrap modulo the memory size and the program counter wraps after
+255. Unused opcodes in the three ALU classes write 0 to their destination, and the
+others do nothing for one cycle, so every bit pattern has a defined effect.
+
+\begin{figure}[t]
+\centering
+\input{figures/format.tex}
+\caption{Instruction format and four encodings produced by the assembler (right: the
+32-bit word in hexadecimal). Bit 16 is unused.}
+\label{fig:format}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{Instruction Classes ($i$ Runs Over All Lanes)}
+\label{tab:isa}
+\footnotesize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lll}
+\toprule
+Instruction & Opcode & Effect \\
+\midrule
+\texttt{V}\emph{op} \texttt{vd, va, vb} & \texttt{0x00}--\texttt{0x0D} & $v_d[i] = v_a[i] \circ v_b[i]$ \\
+\texttt{V}\emph{op} \texttt{vd, va, sb} & \texttt{0x10}--\texttt{0x1D} & $v_d[i] = v_a[i] \circ s_b$ (broadcast) \\
+\texttt{VRED}\emph{op} \texttt{sd, va, vb} & \texttt{0x20}--\texttt{0x2D} & $s_d = \sum_i \left(v_a[i] \circ v_b[i]\right)$ \\
+\texttt{VLD vd, imm(sa)}  & \texttt{0x30} & $v_d = M[s_a + \mathit{imm}]$, 2 cycles \\
+\texttt{VST vb, imm(sa)}  & \texttt{0x31} & $M[s_a + \mathit{imm}] = v_b$ \\
+\texttt{ADDI sd, sa, imm} & \texttt{0x38} & $s_d = s_a + \mathit{imm}$ \\
+\texttt{ADD sd, sa, sb}   & \texttt{0x39} & $s_d = s_a + s_b$ \\
+\texttt{BNE sa, sb, label}& \texttt{0x3C} & branch if $s_a \neq s_b$ \\
+\texttt{HALT}             & \texttt{0x3F} & stop \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\texttt{VDOT} is another name for \texttt{VREDMUL}: a dot-product step in one
+instruction. As with \texttt{VMUL}, each product keeps its low 16 bits before the
+32-bit sum. The vector-add kernel shows the style of every workload:
 \begin{lstlisting}
       ADDI s1, s0, 0       # word index
       ADDI s2, s0, ITER    # passes = N / L
@@ -222,242 +336,428 @@ loop: VLD  v1, A(s1)
       BNE  s1, s2, loop
       HALT
 \end{lstlisting}
-The same source runs on every lane count; only \texttt{ITER} changes.
+The same source runs on every lane count; only the constant \texttt{ITER} changes.
 
 \subsection{Microarchitecture}
-\paragraph{Vector control unit} Decodes the instruction into control signals and
-computes the next program counter. Instruction memory is synchronous (block RAM),
-so the unit sends it the \emph{next} address one cycle early. Taken branches
-therefore cost nothing. Loads take two cycles: the address goes out in the first,
-and the returned data is written in the second.
+Fig.~\ref{fig:block} shows the unit with eight lanes. Following one instruction,
+\texttt{VMUL v3, v1, s2}, through it: the control unit decodes class \texttt{01} and job
+\texttt{MUL}; the vector register file reads \texttt{v1} while the scalar register file
+reads \texttt{s2}; the lane multiplexers copy the low 16 bits of \texttt{s2} into every
+lane; all eight ALUs multiply at once; and at the next clock edge the combined 128-bit
+result is written to \texttt{v3}. All of this happens within one clock cycle.
 
-\paragraph{Vector register file} Eight $L \cdot W$-bit registers, with two
-asynchronous read ports and one synchronous write port.
+\begin{figure*}[t]
+\centering
+\input{figures/block.tex}
+\caption{Block diagram of the SIMD vector processing unit with eight lanes. Blue: vector
+datapath; orange: scalar side; grey: control and memories; dashed: control signals. The
+instruction and data memories are synchronous block RAM outside the core.}
+\label{fig:block}
+\end{figure*}
 
-\paragraph{Scalar register file (scalar interface)} Eight 32-bit registers, with
-\texttt{s0} hard-wired to zero. They hold addresses, loop counters, broadcast values
-and reduction results. A third, debug read port exposes any register to the host
-testbench or to LEDs on the board.
+\textbf{Vector control unit.} Decodes each instruction into control signals and
+computes the next program counter. Instruction memory is synchronous, so the unit sends
+it the address of the \emph{next} instruction one cycle early, including the target of
+a taken branch; branches therefore cost no extra cycle. A load takes two cycles: the
+address goes out in the first while the program counter holds, and the returned data is
+written in the second.
 
-\paragraph{Lane multiplexers} For each lane, operand B is either that lane's element
-of $v_b$ or the low $W$ bits of $s_b$ copied to every lane.
+\textbf{Vector register file.} Eight $16L$-bit registers with two asynchronous read
+ports and one synchronous write port.
 
-\paragraph{Parallel ALUs} $L$ instances of a combinational 14-operation lane ALU,
-created with a \texttt{generate} loop and sharing one operation code. Lanes have no
-connection to each other (no carry crosses a lane boundary).
+\textbf{Scalar register file (scalar interface).} Eight 32-bit registers, with
+\texttt{s0} hard-wired to zero. They hold addresses, loop counters, broadcast values and
+reduction results. A third, debug read port exposes any register to the testbench, or to
+the LEDs on the board.
 
-\paragraph{Result combiner} Returns the lane outputs as a vector for write-back.
-It also sign-extends them to 32 bits and sums them with a $\log_2 L$-level adder tree
-for the reduce instructions.
+\textbf{Lane multiplexers.} For each lane, operand B is either that lane's element of
+$v_b$ or the low 16 bits of $s_b$ copied into every lane.
 
-\subsection{Timing model}
-Every instruction except \texttt{VLD} completes in one cycle, so a program's run time is
+\textbf{Parallel ALUs.} $L$ copies of a combinational 14-operation lane ALU, created
+with a \texttt{generate} loop and sharing one operation code. Lanes have no connection
+to each other.
+
+\textbf{Result combiner.} Passes the lane outputs on as one vector for write-back. For
+reduce instructions it also sign-extends them to 32 bits and adds them in a
+$\log_2 L$-level adder tree (Fig.~\ref{fig:combiner}), so the sum cannot overflow.
+
+\textbf{FPGA top.} Adds block-RAM instruction and data memories loaded at power-up, a
+power-on reset that holds the core for 15 clocks, a two-flip-flop synchroniser on the
+reset button, three switches that select a scalar register and eight LEDs that show its
+low byte.
+
+\begin{figure}[t]
+\centering
+\input{figures/combiner.tex}
+\caption{Result combiner for eight lanes. Reduce instructions widen each lane result to
+32 bits and sum them in $\log_2 8 = 3$ levels of adders; vector instructions use the
+lane results directly as the destination vector.}
+\label{fig:combiner}
+\end{figure}
+
+\subsection{Timing Model}
+Every instruction except \texttt{VLD} completes in one cycle (Fig.~\ref{fig:timing}),
+so the run time of a program is
 \begin{equation}
   \text{cycles} = \text{instructions} + \text{loads}.
+  \label{eq:cycles}
 \end{equation}
-For a kernel with $k$ set-up instructions, a loop body of $b$ instructions with
+For a kernel with $k$ set-up instructions, a loop body of $b$ instructions containing
 $\ell$ loads, and $N$ elements on $L$ lanes,
 \begin{equation}
   C(L) = k + \frac{N}{L}\,(b + \ell) + 1, \qquad
-  S(L) = \frac{C(1)}{C(L)} \;<\; L .
+  S(L) = \frac{C(1)}{C(L)} < L,
+  \label{eq:model}
 \end{equation}
-The speed-up $S$ approaches $L$ as $N$ grows; the $k + 1$ serial instructions are
-the Amdahl term.
+where the final 1 is \texttt{HALT}. The speed-up $S$ approaches $L$ as $N$ grows; the
+$k + 1$ serial instructions are the Amdahl term.
 
-\subsection{Verification methodology}\label{sec:verif}
-Verification works in layers:
-\begin{enumerate}
-\item \textbf{Unit testbenches} drive each block with corner cases and seeded random
-      stimulus and compare against reference models written independently of the RTL
-      (for example, shifts as multiplication or division by $2^n$). The ALU test
-      performs 225,496 lane checks. It counts true and false outcomes per compare
-      operation and fails on any coverage hole.
-\item \textbf{Golden model.} A Python instruction-set simulator executes the
-      assembled machine code and predicts the final memory, registers, instruction
-      count and cycle count.
-\item \textbf{System testbench.} It loads a program and data, runs the core to
-      \texttt{HALT}, and compares all 1,024 data-memory words, all scalar registers
-      (through the debug port) and both counters with the golden model.
-\item \textbf{Program check.} The golden-model result is also compared with plain
-      arithmetic (e.g.\ $C_i = A_i + B_i$), which catches errors in the programs.
-\item \textbf{Directed corner tests.} Hand-built programs exercise what the
-      benchmarks never do: writes to \texttt{s0}, address and PC wrap-around,
-      back-to-back loads, a branch into a load, a 32-bit scalar broadcast and
-      every unused op code.
-\item \textbf{Board check.} The FPGA top, with its block RAM and started only by
-      its power-on reset, must show the golden model's dot product on its LEDs.
-\item \textbf{Mutation tests.} Deliberately injected bugs (a logical instead of
-      arithmetic right shift, a mis-wired adder tree, zero- instead of
-      sign-extension, a missing load stall) must make the tests fail.
-\end{enumerate}
-A sixth program, \texttt{isa\_test}, executes all 42 vector-ALU and reduce forms on
-random 16-bit data, so every instruction is exercised on the complete core.
+\begin{figure}[t]
+\centering
+\input{figures/timing.tex}
+\caption{One pass of the vector-add loop at the cycle level. Each \texttt{VLD} holds the
+program counter for one cycle and writes its register in the second. In cycle 7 the
+taken \texttt{BNE} already sends the loop start (address 2, orange) to instruction
+memory, so the branch costs nothing.}
+\label{fig:timing}
+\end{figure}
 
-\subsection{Experimental setup}
-The five benchmark kernels are vector add, SAXPY ($Y = aX + Y$), ReLU, threshold
-(a branch-free conditional using masks) and dot product, each on $N = 256$
-elements with a fixed random seed. The simulator is Icarus Verilog 13; synthesis
-uses Yosys~0.70 for a Lattice ECP5 LFE5U-25F (speed grade 6), with place-and-route
-in nextpnr. Each ECP5 build is placed with three seeds and the median frequency is
-reported. A Yosys estimate for the Xilinx Artix-7 xc7a35t (Basys-3) is also given.
+\subsection{Software Tool Flow}\label{sec:tools}
+\textbf{Assembler.} A two-pass assembler (\texttt{vasm.py}) resolves labels in the
+first pass and encodes in the second. It accepts named constants such as \texttt{ITER},
+chooses the vector--vector or vector--scalar form from the third operand, and reports
+errors with their line numbers.
 
-% =============================================================================
-\section{Prototype Status and Preliminary Results}\label{sec:results}
+\textbf{Golden model.} An instruction-level simulator (\texttt{golden.py}) executes the
+assembled words with the same wrap-around rules as the hardware and predicts the final
+data memory, the scalar registers, the instruction count and the cycle count
+from~\eqref{eq:cycles}. It shares no code with the RTL.
 
-\subsection{Verification}
-All unit tests pass, and all 24 system runs (6 programs $\times$ 4 lane counts)
-and 8 directed runs match the golden model exactly in memory contents, scalar
-registers, instruction count and cycle count. The board version shows the correct
-dot product for every lane count. Every injected mutation was detected. Verilator lint
-(\texttt{-Wall}) reports no warnings for any module; the only two waivers mark
-bits that are unused on purpose. Continuous integration
-repeats the lint and tests on every change.
+\textbf{Workload runner.} For each program and lane count, \texttt{run\_workloads.py}
+generates input data with a fixed seed, assembles the program with
+$\mathit{ITER} = N/L$, runs the golden model and the RTL simulation, compares them and
+writes the cycle counts to a CSV file.
 
-\subsection{Scalar versus SIMD}
-Table~\ref{tab:perf} gives the cycle counts. Every count equals the prediction of
-(2) exactly, and the speed-up is 1.0--1.6\% below the ideal $8\times$. The gap is
-the two to four set-up instructions and \texttt{HALT}, which are not
-parallelised. Fig.~\ref{fig:speedup} plots the mean over the five kernels.
+\subsection{Verification Methodology}\label{sec:verif}
+Verification works in layers (Table~\ref{tab:verif}). Unit testbenches drive each block
+with corner cases and seeded random stimulus and compare it against reference models
+written independently of the RTL (for example, shifts as multiplication or division by
+$2^n$); the ALU test also counts the true and false outcomes of each compare and fails
+on any coverage hole. The system testbench loads a program and its data, runs the core
+to \texttt{HALT}, keeps the clock running for 50 more cycles (no memory write is
+allowed) and then compares every data-memory word, every scalar register (through the
+debug port), every vector register and both counters with the golden model. The golden-model result is
+itself checked against plain arithmetic, such as $C_i = A_i + B_i$, which catches
+errors in the programs. Directed programs exercise what the benchmarks never do:
+writes to \texttt{s0}, address and program-counter wrap-around, back-to-back loads, a
+branch into a load, a 32-bit scalar broadcast, every unused opcode, branches on numbers
+that differ only in bit 16 or bit 31, unused instruction fields filled in, and
+instructions after \texttt{HALT} that must never run. Random programs go further: a
+fuzzer generates programs with every opcode, random register fields, branches,
+addresses and memory contents, and each must match the golden model. The board check
+simulates the FPGA top exactly as built, started only by its power-on reset, and
+compares its registers and all of its data memory. Finally, mutation tests inject bugs
+and require the tests to fail. A sixth program,
+\texttt{isa\_test}, runs all 42 vector-ALU and reduce forms on random data, so every
+instruction is exercised on the complete core. Continuous integration repeats the lint
+and the tests on every change to the repository.
 
 \begin{table}[t]
 \centering
-\caption{Clock cycles for $N = 256$ elements}
+\caption{Verification Plan}
+\label{tab:verif}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{lL{0.45\columnwidth}r}
+\toprule
+Testbench & What it checks & Checks \\
+\midrule
+\texttt{tb\_vec\_alu}       & 14 jobs, 8 lanes: corner-value pairs, every shift, no carry between lanes, 2,000 random vectors per job & 225,496 \\
+\texttt{tb\_regfiles}       & all registers and ports, write enable, read during write, \texttt{s0} = 0 & 10,044 \\
+\texttt{tb\_lane\_combiner} & broadcast and vector modes; sums at extreme values; $L = 1, 2, 4, 8$ & $4 \times 11{,}008$ \\
+\texttt{tb\_simd\_core}     & 6 programs: memory, all registers, cycles; no write after \texttt{HALT} & 24 runs \\
+directed tests              & corner-case programs, same testbench & 12 runs \\
+random programs             & every opcode; random fields, branches, data & 4,000 \\
+\texttt{tb\_fpga\_top}      & board version, \texttt{isa\_test}, from power-on: registers, memory & 4 builds \\
+software tests              & encodings, branches, errors, model corners & 11 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Workloads and Experimental Setup}
+Five kernels (Table~\ref{tab:kernels}) run on $N = 256$ random 16-bit integers over the
+full range, drawn with a fixed seed. The plain-arithmetic checks wrap each result to 16
+bits as the hardware does (for \texttt{VDOT}, each product keeps its low 16 bits). The
+cycle counts do not depend on the data, because no kernel branches on it. Threshold is a branch-free conditional: a compare builds a mask, an
+\texttt{XOR} with all ones inverts it and an \texttt{AND} applies it. Simulation uses
+Icarus Verilog~13 (12 in continuous integration), lint uses Verilator~5 with all
+warnings enabled, and synthesis uses
+Yosys~0.70 for a Lattice ECP5 LFE5U-25F (speed grade 6) with place-and-route in
+nextpnr-ecp5~0.11. The FPGA builds are loaded with \texttt{isa\_test}, which uses every instruction: a
+program that left an instruction class unused would let synthesis remove its logic and
+make the design look smaller and faster. Each ECP5 build is placed with three seeds,
+and the median of the maximum frequency $F_{\max}$ estimated by nextpnr's static
+timing analysis is given. A Yosys estimate for the Xilinx Artix-7 xc7a35t of the
+Basys-3 board, flattened like the ECP5 build, is also reported.
+
+\begin{table}[t]
+\centering
+\caption{Benchmark Kernels: Set-up Instructions $k$, Loop Body $b$ and Loads $\ell$}
+\label{tab:kernels}
+\footnotesize
+\begin{tabular}{llrrr}
+\toprule
+Kernel & Operation & $k$ & $b$ & $\ell$ \\
+\midrule
+vadd      & $C_i = A_i + B_i$                      & 2 & 6 & 2 \\
+saxpy     & $Y_i = a X_i + Y_i$                    & 3 & 7 & 2 \\
+relu      & $Y_i = \max(X_i, 0)$                   & 2 & 5 & 1 \\
+threshold & $Y_i = X_i$ if $X_i \ge T$, else 0     & 4 & 7 & 1 \\
+dot       & $s = \sum_i A_i B_i$                   & 3 & 6 & 2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =============================================================================
+\section{Prototype Results}\label{sec:results}
+
+\subsection{Verification}
+All unit tests pass. All 24 system runs (six programs at four lane counts), all 12
+directed runs and 4,000 random programs (1,000 per lane count) match the golden model
+exactly in memory contents, scalar and vector registers, instruction count and cycle
+count, and the board version matches it in its registers and all 1,024 memory words at
+every lane count. Verilator lint with all warnings enabled reports nothing for any
+module; the only two waivers mark bits that are unused on purpose. Every injected
+mutation was detected (Table~\ref{tab:mutation}).
+
+\begin{table}[t]
+\centering
+\caption{Mutation Tests: Injected Bugs and the Test That Caught Each}
+\label{tab:mutation}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{L{0.42\columnwidth}ll}
+\toprule
+Injected bug & Caught by & Result \\
+\midrule
+\texttt{SRA} made a logical shift & \texttt{tb\_vec\_alu} & negative inputs \\
+adder tree pairs the wrong lanes & \texttt{tb\_lane\_combiner} & 5,002 errors \\
+no wait for load data & \texttt{tb\_simd\_core} & every result \\
+zero- not sign-extension ($L = 1$) & \texttt{tb\_lane\_combiner} & 2,507 errors \\
+code after \texttt{HALT} keeps running & directed & memory, regs \\
+\texttt{BNE} ignores bits 16--31 & directed & memory \\
+\texttt{VST}/\texttt{BNE}/\texttt{HALT} write a reg. & \texttt{tb\_simd\_core} & vector regs \\
+FPGA stores to a wrong address & \texttt{tb\_fpga\_top} & stored words \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Scalar Versus SIMD}
+Table~\ref{tab:perf} gives the cycle counts. Every one of the 20 kernel counts equals
+the prediction of~\eqref{eq:model} exactly. At eight lanes the speed-up is
+$7.87$--$7.92\x$, 1.0--1.7\% below the ideal $8\x$ (mean $7.89\x$), and halving the
+lane count halves the gain (Fig.~\ref{fig:perf}, left and centre). The shortfall is the
+two to four set-up instructions and \texttt{HALT}, which run once whatever the lane
+count, so it grows with the ratio of serial instructions to loop work: threshold, with
+four set-up instructions, loses most (1.7\%), and vadd, with two set-up instructions
+and eight cycles per pass, loses least (1.0\%).
+
+\begin{table}[t]
+\centering
+\caption{Clock Cycles for $N = 256$ Elements}
 \label{tab:perf}
+\footnotesize
 \begin{tabular}{lrrrrr}
 \toprule
 Kernel & $L{=}1$ & $L{=}2$ & $L{=}4$ & $L{=}8$ & Speed-up \\
 \midrule
-vadd      & 2051 & 1027 & 515 & 259 & $7.92\times$ \\
-saxpy     & 2308 & 1156 & 580 & 292 & $7.90\times$ \\
-relu      & 1539 &  771 & 387 & 195 & $7.89\times$ \\
-threshold & 2053 & 1029 & 517 & 261 & $7.87\times$ \\
-dot       & 2052 & 1028 & 516 & 260 & $7.89\times$ \\
+vadd      & 2051 & 1027 & 515 & 259 & $7.92\x$ \\
+saxpy     & 2308 & 1156 & 580 & 292 & $7.90\x$ \\
+relu      & 1539 &  771 & 387 & 195 & $7.89\x$ \\
+threshold & 2053 & 1029 & 517 & 261 & $7.87\x$ \\
+dot       & 2052 & 1028 & 516 & 260 & $7.89\x$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\includegraphics[width=\columnwidth]{figures/speedup.png}
-\caption{Speed-up over one lane: in clock cycles (blue) and in wall-clock time once
-each design's measured ECP5 $F_{\max}$ is applied (orange).}
-\label{fig:speedup}
-\end{figure}
+\includegraphics[width=\textwidth]{figures/perf.pdf}
+\caption{Scalar versus SIMD. Left: clock cycles per kernel at 1, 2, 4 and 8 lanes, with
+the eight-lane speed-up. Centre: mean speed-up over the five kernels in cycles and in
+wall-clock time (with each build's ECP5 $F_{\max}$); dashed: ideal. Right: vadd speed-up
+against $N$ from~\eqref{eq:model}; diamonds: RTL measurements at $N = 256$.}
+\label{fig:perf}
+\end{figure*}
 
-\subsection{FPGA resources and frequency}
-Table~\ref{tab:fpga} and Fig.~\ref{fig:fpga} summarise the ECP5 results. Each lane
-adds one hardware multiplier and about 530 logic cells on average. Shared logic (control,
-scalar registers, memories) is paid once, so eight lanes need $4.9\times$ the logic
-of one. The register files are mapped to distributed LUT RAM, which keeps the
-flip-flop count low. On the Artix-7, Yosys estimates 3,704 LUTs (18\%) and 9 DSP
-slices for eight lanes.
+Because~\eqref{eq:model} matches every run, it predicts the speed-up at other array
+sizes (Fig.~\ref{fig:perf}, right). For vadd at eight lanes it is $6.1\x$ at $N = 8$,
+$7.9\x$ at $N = 256$ and $7.99\x$ at $N = 4096$ (sizes above 341 elements do not fit
+the scalar build's memory, so they are predicted, not run): the serial part is fixed, so longer
+arrays hide it, as Gustafson~\cite{gustafson} observed for scaled problems. At
+$N = 256$ eight lanes complete 0.88 (saxpy) to 1.31 (relu) elements per clock cycle,
+against 0.11 to 0.17 for one lane.
+
+\subsection{FPGA Resources and Clock Frequency}
+Table~\ref{tab:fpga} and Fig.~\ref{fig:fpga} give the synthesis results. Each lane adds one hardware multiplier and its own ALU, about 550
+logic cells per added lane on average from one to eight lanes. Shared logic (control,
+scalar registers, memories) is paid once, so eight lanes need $3.5\x$ the logic of one,
+not $8\x$. Yosys maps both register files to distributed LUT RAM, so the ECP5 build
+uses only 16 flip-flops at every lane count (the program counter, the load and halt
+flags and the reset logic); block RAM grows from two to nine blocks because the data
+words widen with $L$. On the Artix-7, Yosys estimates 2,731 LUTs (13\%) and eight DSP
+slices, one per lane, for eight lanes. 
 
 \begin{table}[t]
 \centering
-\caption{Lattice ECP5-25F after place-and-route}
+\caption{FPGA Results. ECP5-25F After Place-and-Route ($F_{\max}$: Median and Range of
+Three Seeds); Artix-7 xc7a35t Yosys Estimate}
 \label{tab:fpga}
-\begin{tabular}{lrrrr}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{rrrrrrrr}
 \toprule
-$L$ & Logic cells & Mult. & BRAM & $F_{\max}$ (MHz) \\
+ & \multicolumn{5}{c}{ECP5-25F} & \multicolumn{2}{c}{Artix-7} \\
+\cmidrule(lr){2-6}\cmidrule(lr){7-8}
+$L$ & Cells & FF & Mult. & BRAM & $F_{\max}$ (MHz) & LUTs & DSP \\
 \midrule
-1 &   949 \,(3.9\%)  & 1 & 2 & 50.8 \\
-2 & 1,636 \,(6.7\%)  & 2 & 2 & 41.4 \\
-4 & 2,865 \,(11.8\%) & 4 & 3 & 37.1 \\
-8 & 4,650 \,(19.1\%) & 8 & 5 & 33.6 \\
+1 & 1,555 (6.4\%)  & 16 & 1 & 2 & 43.3 (42.0--44.3) &   548 & 1 \\
+2 & 1,943 (8.0\%)  & 16 & 2 & 3 & 36.2 (36.1--37.2) &   864 & 2 \\
+4 & 3,720 (15.3\%) & 16 & 4 & 5 & 32.9 (32.7--33.7) & 1,483 & 4 \\
+8 & 5,396 (22.2\%) & 16 & 8 & 9 & 29.1 (28.9--29.8) & 2,731 & 8 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\includegraphics[width=\columnwidth]{figures/fpga_scaling.png}
-\caption{ECP5-25F logic cells and maximum clock frequency against lane count
-(median of three placement seeds; bars show the range).}
+\includegraphics[width=\textwidth]{figures/fpga.pdf}
+\caption{FPGA scaling with every instruction in use. Left: logic on the ECP5-25F after
+place-and-route and on the Artix-7 (Yosys estimate). Centre: ECP5 $F_{\max}$, median of
+three seeds (bars: range). Right: throughput, mean elements per cycle times $F_{\max}$
+(bars), and the same per 1,000 logic cells (line).}
 \label{fig:fpga}
-\end{figure}
+\end{figure*}
 
-\subsection{Discussion}
-The maximum frequency falls from \SI{50.8}{MHz} to \SI{33.6}{MHz} as the lanes go
-from one to eight. Because the core executes each instruction in a single cycle, its
-critical path crosses the whole datapath: block-RAM output, decode, register read,
-multiplier, adder tree and scalar write-back. Wider designs also spread across
-more of the device, which lengthens routing. The wall-clock speed-up at eight lanes
-is therefore $7.89 \times 33.6/50.8 = 5.2\times$, not $7.9\times$. The result
-confirms the main promise of SIMD: near-linear gains in work per instruction. It
-also shows that a wider datapath must be pipelined to keep its clock rate. On a
-small Lattice iCE40 UP5K (5,280 cells), the 8-lane design did not fit even with its
-eight DSP blocks in use. A mid-range device is the practical minimum.
+The estimated maximum frequency falls from 43.3~MHz at one lane to 29.1~MHz at eight,
+33\% lower; the spread between placement seeds is at most 2.3~MHz. Because the core
+executes each instruction in a single cycle, its critical path crosses the whole
+datapath. At eight lanes nextpnr reports it from the instruction block RAM through the
+scalar and vector register reads, a lane ALU (the multiplier in two of the three
+placements), the result selection and the adder tree to the scalar register write.
+Wider designs also spread over more of the device, which lengthens the routing.
 
-% =============================================================================
-\section{Individual Contributions}
-
-\begin{table}[h]
-\centering
-\caption{Work split (GitHub history shows each member's commits)}
-\label{tab:contrib}
-\begin{tabular}{p{0.24\columnwidth}p{0.66\columnwidth}}
-\toprule
-Member & Contribution \\
-\midrule
-Mahir (lead) & Architecture and ISA; vector control unit; core integration; instruction-level golden model and workload runner; system testbench; CI; documentation; report \\
-Krishiv Gupta & Lane ALU (14 operations) and parallel ALU array; ALU testbench; FPGA wrapper and synthesis flow (ECP5 place-and-route, Artix-7, Vivado); resource and $F_{\max}$ analysis \\
-Abhiman Singh & Vector and scalar register files with debug port; register-file testbench \\
-Jayadeep & Lane multiplexers and result combiner (adder tree); combiner testbench for 1--8 lanes; scalar-versus-SIMD performance analysis and figures \\
-Ashish Kushwaha & Assembler; the six workload programs; assembler tests \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\textbf{Mahir} defined the instruction format and the block interfaces that the rest
-of the team built against. He wrote the vector control unit, with its early
-instruction fetch and two-cycle load, and integrated the core. He wrote the
-instruction-level golden model that predicts results and exact cycle counts, the
-workload runner, and the system testbench that compares memory, registers and cycle
-counts with the model. He also set up the repository, continuous integration and
-documentation.
-
-\textbf{Krishiv Gupta} designed the lane ALU and its \texttt{generate}-based array,
-including signed and unsigned compares and arithmetic shifts. His testbench checks
-225,496 lane results against an independent integer model and proves that no carry
-crosses a lane boundary. He also built the FPGA wrapper and the synthesis flow that
-produced the ECP5 resource and frequency results, the Artix-7 estimate, and the
-Vivado script and Basys-3 constraints for the lab.
-
-\textbf{Abhiman Singh} designed the two register files: two read ports and one
-write port each, a hard-wired zero register, and the debug port that forms the
-scalar interface. His testbench covers read-during-write behaviour and 4,000 random
-cycles against a shadow model.
-
-\textbf{Jayadeep} designed the lane multiplexers and the result combiner's
-$\log_2 L$ adder tree, verified for every lane count. He produced the
-scalar-versus-SIMD analysis: cycle counts for 1, 2, 4 and 8 lanes, speed-up,
-throughput and the figures.
-
-\textbf{Ashish Kushwaha} wrote the two-pass assembler, with labels, constants and
-line-numbered error messages, and its tests. He also wrote the six workload programs,
-including the branch-free threshold kernel and the instruction-coverage program.
+\subsection{Throughput and Area Efficiency}
+Combining cycles and clock, the eight-lane unit finishes a kernel $7.89 \times
+29.1/43.3 = 5.3\x$ sooner than the scalar build, against $1.7\x$ for two lanes and
+$3.0\x$ for four (Fig.~\ref{fig:perf}, centre). Throughput rises from 5.6 to 9.4, 17.0
+and 29.9 million elements per second (Fig.~\ref{fig:fpga}, right). Per 1,000 logic cells it grows from 3.6 million elements per second at one lane to
+5.5 at eight: eight lanes do 1.5 times
+as much work per cell as one, because the shared logic is spread over more lanes.
 
 % =============================================================================
-\section{Conclusion and Phase II Plan}
+\section{Discussion and Limitations}\label{sec:discussion}
+
+\textbf{Near-ideal scaling in cycles.} The lanes never interact, the core has no
+hazards, and every kernel's serial part is three to five instructions, so the cycle
+speed-up is within 1.7\% of ideal and is predicted exactly by~\eqref{eq:model}. The
+unit therefore demonstrates the main promise of SIMD: the work done per instruction
+grows with the number of lanes while the control cost does not.
+
+\textbf{The clock pays for the width.} Single-cycle execution makes the design simple
+to verify and its timing exact, but puts the multiplier and the adder tree on the same
+path as the instruction fetch and the register write. A third of the clock is lost
+between one and eight lanes, so a wider single-cycle datapath delivers less than its
+cycle count suggests; pipelining is needed to keep the clock rate.
+
+\textbf{The loop, not the ALU, sets the pace.} In one pass of vadd at eight lanes only
+one of the eight cycles does arithmetic; two loads take four cycles, and the store and
+the loop control take three (Fig.~\ref{fig:timing}). The ALUs are idle most of the time. Memory bandwidth is not the limit, since
+the block RAM could deliver a 128-bit word every cycle; the limit is issue: one
+instruction per cycle, loads that take two cycles and are not overlapped, and the loop
+control. Loop unrolling, auto-incrementing addresses or pipelined loads would raise
+throughput without adding lanes.
+
+\textbf{Limitations and threats to validity.}
+\begin{itemize}
+\item The design is not pipelined, so the clock frequencies are those of a single-cycle
+      datapath and understate what the lane array could reach.
+\item Elements are 16-bit integers only, with wrap-around and no saturation, and there
+      is no masked (predicated) execution; conditionals use \texttt{AND} masks.
+\item \texttt{VDOT} keeps only the low 16 bits of each product, so its inputs must be
+      small enough for the products to fit, as in the dot-product test; a widening
+      multiply would remove this limit.
+\item A program must be reassembled for each lane count, because the loop count
+      $N/L$ is a constant; there is no \texttt{vsetvli}-style instruction.
+\item The FPGA results are for one device and speed grade, and $F_{\max}$ is nextpnr's
+      static-timing estimate without pin constraints. Artix-7 figures are Yosys
+      estimates without timing, and the Vivado flow for the Basys-3 board is written but
+      not yet run. The board check simulates the FPGA top; the design has not yet run on
+      a physical board.
+\item The kernels are short and regular. No power or energy was measured.
+\end{itemize}
+
+% =============================================================================
+\section{Conclusion and Phase II Plan}\label{sec:conclusion}
 The Phase~I prototype is complete and verified. An eight-lane, 128-bit SIMD unit
-executes a 48-instruction ISA, matches its golden model cycle for cycle, and reaches
-a $7.9\times$ cycle speed-up and a $5.2\times$ wall-clock speed-up over its own
-scalar configuration on a mid-range FPGA. Phase~II will
+executes a 48-instruction ISA, matches its golden model cycle for cycle at every lane
+count, and reaches a $7.9\x$ cycle speed-up and a $5.3\x$ wall-clock speed-up over its
+own scalar configuration on a mid-range FPGA, at 22\% of the logic. The results show
+where the remaining performance lies: in the clock, which a pipeline would recover, and
+in the loop overhead around the arithmetic. Phase~II will therefore
 (i)~pipeline the core to raise $F_{\max}$ and recover wall-clock speed-up;
 (ii)~measure exact Artix-7 resources and timing in Vivado and run the design on a
 Basys-3 board;
 (iii)~add predicated (masked) execution and saturating arithmetic;
-(iv)~study speed-up against problem size $N$ to quantify the Amdahl term; and
-(v)~compare power estimates per operation for scalar and SIMD builds.
+(iv)~reduce loop overhead with unrolling and auto-incrementing addresses, and measure
+speed-up against problem size on the hardware; and
+(v)~compare estimated power per operation for the scalar and SIMD builds.
 
 % =============================================================================
+\section*{Code and Data Availability}
+All RTL, testbenches, programs, scripts, results and figures are in the repository
+named on the first page. One command,
+\texttt{make test}, runs the lint, the unit testbenches, the software tests, the system
+and directed runs, 100 random programs and the board check; \texttt{make fuzz} runs
+4,000 random programs; \texttt{make perf} and \texttt{make syn} regenerate the cycle
+counts and the FPGA results, and \texttt{make report} rebuilds the figures and this
+paper from them. 
+
+\section*{Individual Contributions}
+\textbf{Mahir Abdullah} (lead): the architecture, instruction format and block interfaces
+that the team built against; the vector control unit with early instruction fetch and
+two-cycle load; core integration with performance counters; the instruction-level golden
+model, the workload runner, the directed tests and the random-program fuzzer; the
+system testbench; the repository,
+continuous integration and documentation; and this report.
+
+\textbf{Krishiv Gupta}: the 14-operation lane ALU and its \texttt{generate}-based array,
+including signed and unsigned compares and arithmetic shifts, with its 225,496-check testbench, which also confirms that no carry crosses a lane; the FPGA top with
+block-RAM memories and power-on reset; the board check; the ECP5 and Artix-7 synthesis
+sweep, the Vivado script and Basys-3 constraints; and the resource and $F_{\max}$
+analysis.
+
+\textbf{Abhiman Singh}: the vector and scalar register files, with two read ports and
+one write port each, a hard-wired zero register and the debug port that forms the scalar
+interface; and their testbench, which covers read-during-write behaviour and random
+cycles against a shadow model.
+
+\textbf{Gogulamudi Jayadeep}: the lane multiplexers and the result combiner with its $\log_2 L$
+adder tree, verified for every lane count; and the scalar-versus-SIMD analysis: cycle
+counts for 1, 2, 4 and 8 lanes, speed-up, elements per cycle and the figures.
+
+\textbf{Ashish Kushwaha}: the two-pass assembler with labels, constants and
+line-numbered error messages, and its tests; and the six workload programs, including
+the branch-free threshold kernel and the instruction-coverage program.
+
+\section*{Acknowledgment}
+The authors thank the developers of Icarus Verilog, Verilator, Yosys and nextpnr, whose
+open tools make every result in this report reproducible.
+
+% =============================================================================
+% References are numbered in the order they are first cited.
 \begin{thebibliography}{99}
-
-\bibitem{hp6} J.~L. Hennessy and D.~A. Patterson, \emph{Computer Architecture: A
-Quantitative Approach}, 6th~ed. Cambridge, MA, USA: Morgan Kaufmann, 2017, ch.~4.
-
-\bibitem{flynn72} M.~J. Flynn, ``Some computer organizations and their effectiveness,''
-\emph{IEEE Trans. Comput.}, vol.~C-21, no.~9, pp.~948--960, Sep. 1972.
 
 \bibitem{cray1} R.~M. Russell, ``The CRAY-1 computer system,''
 \emph{Commun. ACM}, vol.~21, no.~1, pp.~63--72, Jan. 1978.
@@ -465,6 +765,16 @@ Quantitative Approach}, 6th~ed. Cambridge, MA, USA: Morgan Kaufmann, 2017, ch.~4
 \bibitem{mmx} A.~Peleg and U.~Weiser, ``MMX technology extension to the Intel
 architecture,'' \emph{IEEE Micro}, vol.~16, no.~4, pp.~42--50, Aug. 1996,
 doi: 10.1109/40.526924.
+
+\bibitem{hp6} J.~L. Hennessy and D.~A. Patterson, \emph{Computer Architecture: A
+Quantitative Approach}, 6th~ed. Cambridge, MA, USA: Morgan Kaufmann, 2017, ch.~4.
+
+\bibitem{flynn72} M.~J. Flynn, ``Some computer organizations and their effectiveness,''
+\emph{IEEE Trans. Comput.}, vol.~C-21, no.~9, pp.~948--960, Sep. 1972.
+
+\bibitem{espasa98} R.~Espasa, M.~Valero, and J.~E. Smith, ``Vector architectures:
+Past, present and future,'' in \emph{Proc. 12th Int. Conf. Supercomputing (ICS)},
+1998, pp.~425--432.
 
 \bibitem{sse} S.~K. Raman, V.~Pentkovski, and J.~Keshava, ``Implementing streaming
 SIMD extensions on the Pentium III processor,'' \emph{IEEE Micro}, vol.~20, no.~4,
@@ -485,6 +795,9 @@ in data-parallel accelerators,'' in \emph{Proc. 38th Int. Symp. Comput. Archit.
 \bibitem{rvv} RISC-V International, ``The RISC-V `V' vector extension,''
 version~1.0, 2021. [Online]. Available: \url{https://github.com/riscv/riscv-v-spec}
 
+\bibitem{sve} N.~Stephens \emph{et al.}, ``The ARM scalable vector extension,''
+\emph{IEEE Micro}, vol.~37, no.~2, pp.~26--39, Mar. 2017, doi: 10.1109/MM.2017.35.
+
 \bibitem{ara} M.~Cavalcante, F.~Schuiki, F.~Zaruba, M.~Schaffner, and L.~Benini,
 ``Ara: A 1-GHz+ scalable and energy-efficient RISC-V vector processor with
 multiprecision floating-point support in 22-nm FD-SOI,'' \emph{IEEE Trans. Very
@@ -495,8 +808,8 @@ Developer's Manual}, vol.~2. [Online]. Available: \url{https://www.intel.com/sdm
 Accessed: Nov. 6, 2026.
 
 \bibitem{armarm} Arm Ltd., \emph{Arm Architecture Reference Manual for A-profile
-Architecture}. [Online]. Available: \url{https://developer.arm.com/documentation/ddi0487/latest}.
-Accessed: Nov. 6, 2026.
+Architecture}. [Online]. Available:
+\url{https://developer.arm.com/documentation/ddi0487/latest}. Accessed: Nov. 6, 2026.
 
 \bibitem{msa} MIPS Technologies, ``MIPS SIMD Architecture,'' white paper, rev.~1.00, 2012.
 
@@ -519,17 +832,38 @@ FPGAs with the VectorBlox MXP matrix processor,'' in \emph{Proc. Int. Conf.
 Hardware/Software Codesign Syst. Synth. (CODES+ISSS)}, 2013, pp.~1--10,
 doi: 10.1109/CODES-ISSS.2013.6658993.
 
+\bibitem{vicuna} M.~Platzer and P.~Puschner, ``Vicuna: A timing-predictable RISC-V
+vector coprocessor for scalable parallel computation,'' in \emph{Proc. 33rd Euromicro
+Conf. Real-Time Syst. (ECRTS)}, ser. LIPIcs, vol.~196, 2021, pp.~1:1--1:18,
+doi: 10.4230/LIPIcs.ECRTS.2021.1.
+
 \bibitem{amdahl} G.~M. Amdahl, ``Validity of the single processor approach to
 achieving large scale computing capabilities,'' in \emph{Proc. AFIPS Spring Joint
 Comput. Conf.}, 1967, pp.~483--485.
+
+\bibitem{gustafson} J.~L. Gustafson, ``Reevaluating Amdahl's law,'' \emph{Commun.
+ACM}, vol.~31, no.~5, pp.~532--533, May 1988.
+
+\bibitem{demillo} R.~A. DeMillo, R.~J. Lipton, and F.~G. Sayward, ``Hints on test data
+selection: Help for the practicing programmer,'' \emph{Computer}, vol.~11, no.~4,
+pp.~34--41, Apr. 1978.
+
+\bibitem{icarus} S.~Williams, ``Icarus Verilog,'' 2026. [Online]. Available:
+\url{https://steveicarus.github.io/iverilog/}
+
+\bibitem{verilator} W.~Snyder, ``Verilator,'' 2026. [Online]. Available:
+\url{https://www.veripool.org/verilator/}
+
+\bibitem{yosys} C.~Wolf, ``Yosys Open SYnthesis Suite.'' [Online]. Available:
+\url{https://yosyshq.net/yosys/}
 
 \bibitem{nextpnr} D.~Shah, E.~Hung, C.~Wolf, S.~Bazanski, D.~Gisselquist, and
 M.~Milanovi\'c, ``Yosys+nextpnr: An open source framework from Verilog to bitstream
 for commercial FPGAs,'' in \emph{Proc. IEEE 27th Annu. Int. Symp.
 Field-Program. Custom Comput. Mach. (FCCM)}, 2019, arXiv:1903.10407.
 
-\bibitem{icarus} S.~Williams, ``Icarus Verilog,'' 2026. [Online]. Available:
-\url{https://steveicarus.github.io/iverilog/}
+\bibitem{ieee1364} \emph{IEEE Standard for Verilog Hardware Description Language},
+IEEE Std 1364-2005, 2006.
 
 \end{thebibliography}
 
